@@ -46,6 +46,7 @@ class FLAGS(object):
         self.step_z = 100
         self.opt_sample_dir = 'opt_img'
         self.acc_step = 100
+        self.sample_size = 64
 
 
 

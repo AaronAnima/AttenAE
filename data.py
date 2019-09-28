@@ -50,8 +50,8 @@ import ipdb
 
 #
 def get_celebA_attr(Attr_type):
-    image_path = "/home/dgx/WMD/data/celebA/celebA"
-    CelebA_Attr_file = "/home/dgx/WMD/data/list_attr_celeba.txt"
+    image_path = "/home/asus/Workspace/WMDGAN/data/celebA/celebA"
+    CelebA_Attr_file = "/home/asus/Workspace/WMDGAN/data/celebA/list_attr_celeba.txt"
     labels = []
     with open(CelebA_Attr_file, "r") as Attr_file:
         Attr_info = Attr_file.readlines()

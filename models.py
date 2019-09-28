@@ -5,71 +5,115 @@ from tensorlayer.layers import Input, Dense, DeConv2d, Reshape, BatchNorm2d, Con
 from config import flags
 from utils import SpectralNormConv2d
 
+#
+# def get_G(shape_z):    # Dimension of gen filters in first conv layer. [64]
+#     # w_init = tf.glorot_normal_initializer()
+#     print("for G")
+#     ngf = 64
+#     w_init = tf.random_normal_initializer(stddev=0.02)
+#     gamma_init = tf.random_normal_initializer(1., 0.02)
+#     n_extra_layers = flags.n_extra_layers
+#     isize = 64
+#     cngf, tisize = ngf // 2, 4
+#     while tisize != isize:
+#         cngf = cngf * 2
+#         tisize = tisize * 2
+#     ni = Input(shape_z)
+#
+#
+#     # nn = Reshape(shape=[-1, 1, 1, flags.z_dim])(ni)
+#     # nn = DeConv2d(cngf, (4, 4), (1, 1), W_init=w_init, b_init=None, padding='VALID')(nn)
+#     # nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+#
+#     nn = ni
+#     csize, cndf = 4, cngf
+#     while csize < isize // 2:
+#         cngf = cngf // 2
+#         nn = DeConv2d(cngf, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+#         nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+#         print(nn.shape)
+#         csize = csize * 2
+#
+#     for t in range(n_extra_layers):
+#         nn = DeConv2d(cngf, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
+#         nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+#         print(nn.shape)
+#
+#     nn = DeConv2d(3, (4, 4), (2, 2), act=tf.nn.tanh, W_init=w_init, b_init=None)(nn)
+#     print(nn.shape)
+#
+#     return tl.models.Model(inputs=ni, outputs=nn)
+#
+# # E is reverse of G without activation in the output layer
+# def get_E(shape):
+#     w_init = tf.random_normal_initializer(stddev=0.02)
+#     gamma_init = tf.random_normal_initializer(1., 0.02)
+#     ngf = 64
+#     isize = 64
+#     n_extra_layers = flags.n_extra_layers
+#     print(" for E")
+#     ni = Input(shape)
+#     nn = Conv2d(ngf, (4, 4), (2, 2), act=None, W_init=w_init, b_init=None)(ni)
+#     print(nn.shape)
+#     isize = isize // 2
+#
+#     for t in range(n_extra_layers):
+#         nn = Conv2d(ngf, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
+#         nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+#         print(nn.shape)
+#
+#     while isize > 4:
+#         ngf = ngf * 2
+#         nn = Conv2d(ngf, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+#         if isize != 8:
+#             nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+#         print(nn.shape)
+#         isize = isize // 2
+#
+#     # nn = Conv2d(flags.z_dim, (4, 4), (1, 1), act=None, W_init=w_init, b_init=None, padding='VALID')(nn)
+#     # # print(nn.shape)
+#     # nn = Reshape(shape=[-1, flags.z_dim])(nn)
+#     return tl.models.Model(inputs=ni, outputs=nn)
 
-def get_G(shape_z):    # Dimension of gen filters in first conv layer. [64]
-    # w_init = tf.glorot_normal_initializer()
-    print("for G")
-    ngf = 64
-    w_init = tf.random_normal_initializer(stddev=0.02)
-    gamma_init = tf.random_normal_initializer(1., 0.02)
-    n_extra_layers = flags.n_extra_layers
-    isize = 64
-    cngf, tisize = ngf // 2, 4
-    while tisize != isize:
-        cngf = cngf * 2
-        tisize = tisize * 2
-    ni = Input(shape_z)
 
-
-    # nn = Reshape(shape=[-1, 1, 1, flags.z_dim])(ni)
-    # nn = DeConv2d(cngf, (4, 4), (1, 1), W_init=w_init, b_init=None, padding='VALID')(nn)
-    # nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
-
-    nn = ni
-    csize, cndf = 4, cngf
-    while csize < isize // 2:
-        cngf = cngf // 2
-        nn = DeConv2d(cngf, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
-        nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
-        print(nn.shape)
-        csize = csize * 2
-
-    for t in range(n_extra_layers):
-        nn = DeConv2d(cngf, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
-        nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
-        print(nn.shape)
-
-    nn = DeConv2d(3, (4, 4), (2, 2), act=tf.nn.tanh, W_init=w_init, b_init=None)(nn)
-    print(nn.shape)
-
-    return tl.models.Model(inputs=ni, outputs=nn)
-
+# def res_block():
 
 # E is reverse of G without activation in the output layer
-def get_E(shape):
+def get_Eq(shape):
     w_init = tf.random_normal_initializer(stddev=0.02)
     gamma_init = tf.random_normal_initializer(1., 0.02)
     ngf = 64
     isize = 64
     n_extra_layers = flags.n_extra_layers
-    print(" for E")
+
     ni = Input(shape)
-    nn = Conv2d(ngf, (4, 4), (2, 2), act=None, W_init=w_init, b_init=None)(ni)
-    print(nn.shape)
-    isize = isize // 2
+    nn = Conv2d(ngf, (4, 4), (2, 2), W_init=w_init, act=tf.nn.relu)(ni)
 
-    for t in range(n_extra_layers):
-        nn = Conv2d(ngf, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
-        nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
-        print(nn.shape)
+    nn = Conv2d(ngf * 2, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
 
-    while isize > 4:
-        ngf = ngf * 2
-        nn = Conv2d(ngf, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
-        if isize != 8:
-            nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
-        print(nn.shape)
-        isize = isize // 2
+    nn = Conv2d(ngf * 4, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = Conv2d(ngf * 8, (4, 4), (1, 1), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = DeConv2d(ngf * 2, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = DeConv2d(ngf//2, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = DeConv2d(ngf // 8, (4, 4), (2, 2), W_init=w_init, act=tf.nn.relu)(nn)
+    # nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    # while isize > 4:
+    #     ngf = ngf * 2
+    #     nn = Conv2d(ngf, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    #     if isize != 8:
+    #         nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+    #     print(nn.shape)
+    #     isize = isize // 2
 
     # nn = Conv2d(flags.z_dim, (4, 4), (1, 1), act=None, W_init=w_init, b_init=None, padding='VALID')(nn)
     # # print(nn.shape)
@@ -77,56 +121,108 @@ def get_E(shape):
     return tl.models.Model(inputs=ni, outputs=nn)
 
 
-def get_img_D(shape):
+# E is reverse of G without activation in the output layer
+def get_Ev(shape):
     w_init = tf.random_normal_initializer(stddev=0.02)
-    lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
-    ndf = 64
+    gamma_init = tf.random_normal_initializer(1., 0.02)
+    ngf = 64
     isize = 64
     n_extra_layers = flags.n_extra_layers
 
     ni = Input(shape)
-    n = Conv2d(ndf, (4, 4), (2, 2), act=None, W_init=w_init, b_init=None)(ni)
-    csize, cndf = isize / 2, ndf
+    nn = Conv2d(ngf, (3, 3), (2, 2), W_init=w_init, act=tf.nn.relu)(ni)
 
-    for t in range(n_extra_layers):
-        n = SpectralNormConv2d(cndf, (3, 3), (1, 1), act=lrelu, W_init=w_init, b_init=None)(n)
+    nn = Conv2d(ngf // 2, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
 
-    while csize > 4:
-        cndf = cndf * 2
-        n = SpectralNormConv2d(cndf, (4, 4), (2, 2), act=lrelu, W_init=w_init, b_init=None)(n)
-        csize = csize / 2
-
-    n = Conv2d(1, (4, 4), (1, 1), act=None, W_init=w_init, b_init=None, padding='VALID')(n)
-
-    return tl.models.Model(inputs=ni, outputs=n)
+    nn = Conv2d(3, (1, 1), (1, 1), W_init=w_init, b_init=None)(nn)
+    return tl.models.Model(inputs=ni, outputs=nn)
 
 
-def get_z_D(shape_z):
+# E is reverse of G without activation in the output layer
+def get_Ek(shape):
     w_init = tf.random_normal_initializer(stddev=0.02)
     gamma_init = tf.random_normal_initializer(1., 0.02)
-    lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
-    nz = Input(shape_z)
-    nn = Reshape(shape=[-1, 4 * 4 * 512])(nz)
-    n = Dense(n_units= 4 * 512, act=lrelu, W_init=w_init)(nn)
-    n = Dense(n_units=512, act=lrelu, W_init=w_init, b_init=None)(n)
-    # n = BatchNorm(decay=0.9, act=lrelu, gamma_init=gamma_init, name=None)(n)
-    n = Dense(n_units=128, act=lrelu, W_init=w_init, b_init=None)(n)
-    # n = BatchNorm(decay=0.9, act=lrelu, gamma_init=gamma_init, name=None)(n)
-    n = Dense(n_units=1, act=None, W_init=w_init, b_init=None)(n)
-    return tl.models.Model(inputs=nz, outputs=n)
+    ngf = 64
+    isize = 64
+    n_extra_layers = flags.n_extra_layers
 
-# 4 * 4 * 512 = 128 * 4 * 4 * 4 G is the transpose of D
-def get_z_G(shape_z):
     w_init = tf.random_normal_initializer(stddev=0.02)
     gamma_init = tf.random_normal_initializer(1., 0.02)
-    lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
-    nz = Input(shape_z)
-    n = Dense(n_units=4 * 128, act=lrelu, W_init=w_init)(nz)
-    n = Dense(n_units=4 * 4 * 128, act=None, W_init=w_init, b_init=None)(n)
-    n = BatchNorm(decay=0.9, act=lrelu, gamma_init=gamma_init, name=None)(n)
-    n = Dense(n_units=4 * 4 * 4 * 128, act=None, W_init=w_init, b_init=None)(n)
-    n = Reshape(shape=[-1, 4, 4, 512])(n)
-    return tl.models.Model(inputs=nz, outputs=n)
+    ngf = 64
+    isize = 64
+    n_extra_layers = flags.n_extra_layers
+
+    ni = Input(shape)
+    nn = Conv2d(ngf, (4, 4), (2, 2), W_init=w_init, act=tf.nn.relu)(ni)
+
+    nn = Conv2d(ngf * 2, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = Conv2d(ngf * 4, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = DeConv2d(ngf, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = DeConv2d(ngf // 2, (1, 1), (1, 1), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = DeConv2d(ngf // 8, (4, 4), (2, 2), W_init=w_init, act=tf.nn.relu)(nn)
+    return tl.models.Model(inputs=ni, outputs=nn)
+
+#
+#
+# def get_img_D(shape):
+#     w_init = tf.random_normal_initializer(stddev=0.02)
+#     lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
+#     ndf = 64
+#     isize = 64
+#     n_extra_layers = flags.n_extra_layers
+#
+#     ni = Input(shape)
+#     n = Conv2d(ndf, (4, 4), (2, 2), act=None, W_init=w_init, b_init=None)(ni)
+#     csize, cndf = isize / 2, ndf
+#
+#     for t in range(n_extra_layers):
+#         n = SpectralNormConv2d(cndf, (3, 3), (1, 1), act=lrelu, W_init=w_init, b_init=None)(n)
+#
+#     while csize > 4:
+#         cndf = cndf * 2
+#         n = SpectralNormConv2d(cndf, (4, 4), (2, 2), act=lrelu, W_init=w_init, b_init=None)(n)
+#         csize = csize / 2
+#
+#     n = Conv2d(1, (4, 4), (1, 1), act=None, W_init=w_init, b_init=None, padding='VALID')(n)
+#
+#     return tl.models.Model(inputs=ni, outputs=n)
+#
+#
+# def get_z_D(shape_z):
+#     w_init = tf.random_normal_initializer(stddev=0.02)
+#     gamma_init = tf.random_normal_initializer(1., 0.02)
+#     lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
+#     nz = Input(shape_z)
+#     nn = Reshape(shape=[-1, 4 * 4 * 512])(nz)
+#     n = Dense(n_units= 4 * 512, act=lrelu, W_init=w_init)(nn)
+#     n = Dense(n_units=512, act=lrelu, W_init=w_init, b_init=None)(n)
+#     # n = BatchNorm(decay=0.9, act=lrelu, gamma_init=gamma_init, name=None)(n)
+#     n = Dense(n_units=128, act=lrelu, W_init=w_init, b_init=None)(n)
+#     # n = BatchNorm(decay=0.9, act=lrelu, gamma_init=gamma_init, name=None)(n)
+#     n = Dense(n_units=1, act=None, W_init=w_init, b_init=None)(n)
+#     return tl.models.Model(inputs=nz, outputs=n)
+#
+# # 4 * 4 * 512 = 128 * 4 * 4 * 4 G is the transpose of D
+# def get_z_G(shape_z):
+#     w_init = tf.random_normal_initializer(stddev=0.02)
+#     gamma_init = tf.random_normal_initializer(1., 0.02)
+#     lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
+#     nz = Input(shape_z)
+#     n = Dense(n_units=4 * 128, act=lrelu, W_init=w_init)(nz)
+#     n = Dense(n_units=4 * 4 * 128, act=None, W_init=w_init, b_init=None)(n)
+#     n = BatchNorm(decay=0.9, act=lrelu, gamma_init=gamma_init, name=None)(n)
+#     n = Dense(n_units=4 * 4 * 4 * 128, act=None, W_init=w_init, b_init=None)(n)
+#     n = Reshape(shape=[-1, 4, 4, 512])(n)
+#     return tl.models.Model(inputs=nz, outputs=n)
 
 
 # def get_trans_func(shape=[None, flags.z_dim]):
