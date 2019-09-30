@@ -23,7 +23,7 @@ class FLAGS(object):
         self.sample_dir = "samples" # "Directory name to save the image samples [samples]")
         self.img_size_h = 64 # Img height
         self.img_size_w = 64  # Img width
-        self.eval_step = 100 # Evaluation freq during training
+        self.eval_step = 900 # Evaluation freq during training
         self.lamba_recon = 10
         self.len_dataset = 60000
         self.step_num = 200000

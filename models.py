@@ -132,8 +132,23 @@ def get_Ev(shape):
     ni = Input(shape)
     nn = Conv2d(ngf, (3, 3), (2, 2), W_init=w_init, act=tf.nn.relu)(ni)
 
-    nn = Conv2d(ngf // 2, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
+    nn = Conv2d(ngf, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
     nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = Conv2d(ngf, (1, 1), (1, 1), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = Conv2d(ngf * 2, (3, 3), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = Conv2d(ngf * 2, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    nn = Conv2d(ngf * 2, (1, 1), (1, 1), W_init=w_init, b_init=None)(nn)
+    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+
+    # nn = Conv2d(ngf * 4, (3, 3), (1, 1), W_init=w_init, b_init=None)(nn)
+    # nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
 
     nn = Conv2d(3, (1, 1), (1, 1), W_init=w_init, b_init=None)(nn)
     return tl.models.Model(inputs=ni, outputs=nn)
@@ -159,42 +174,43 @@ def get_Ek(shape):
     nn = Conv2d(ngf * 2, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
     nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
 
-    nn = Conv2d(ngf * 4, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = Conv2d(ngf * 2, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
     nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
 
-    nn = DeConv2d(ngf, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
+    nn = DeConv2d(ngf // 2, (4, 4), (2, 2), W_init=w_init, b_init=None)(nn)
     nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
 
-    nn = DeConv2d(ngf // 2, (1, 1), (1, 1), W_init=w_init, b_init=None)(nn)
-    nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+    nn = DeConv2d(ngf // 8, (1, 1), (1, 1), W_init=w_init, b_init=None)(nn)
 
-    nn = DeConv2d(ngf // 8, (4, 4), (2, 2), W_init=w_init, act=tf.nn.relu)(nn)
+    # nn = BatchNorm(decay=0.9, act=tf.nn.relu, gamma_init=gamma_init, name=None)(nn)
+    #
+    # nn = DeConv2d(ngf // 8, (4, 4), (2, 2), W_init=w_init, act=tf.nn.relu)(nn)
     return tl.models.Model(inputs=ni, outputs=nn)
 
 #
 #
-# def get_img_D(shape):
-#     w_init = tf.random_normal_initializer(stddev=0.02)
-#     lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
-#     ndf = 64
-#     isize = 64
-#     n_extra_layers = flags.n_extra_layers
-#
-#     ni = Input(shape)
-#     n = Conv2d(ndf, (4, 4), (2, 2), act=None, W_init=w_init, b_init=None)(ni)
-#     csize, cndf = isize / 2, ndf
-#
-#     for t in range(n_extra_layers):
-#         n = SpectralNormConv2d(cndf, (3, 3), (1, 1), act=lrelu, W_init=w_init, b_init=None)(n)
-#
-#     while csize > 4:
-#         cndf = cndf * 2
-#         n = SpectralNormConv2d(cndf, (4, 4), (2, 2), act=lrelu, W_init=w_init, b_init=None)(n)
-#         csize = csize / 2
-#
-#     n = Conv2d(1, (4, 4), (1, 1), act=None, W_init=w_init, b_init=None, padding='VALID')(n)
-#
-#     return tl.models.Model(inputs=ni, outputs=n)
+def get_img_D(shape):
+    w_init = tf.random_normal_initializer(stddev=0.02)
+    lrelu = lambda x: tf.nn.leaky_relu(x, 0.2)
+    ndf = 64
+    isize = 64
+    n_extra_layers = flags.n_extra_layers
+
+    ni = Input(shape)
+    n = Conv2d(ndf, (4, 4), (2, 2), act=None, W_init=w_init, b_init=None)(ni)
+    csize, cndf = isize / 2, ndf
+
+    for t in range(n_extra_layers):
+        n = SpectralNormConv2d(cndf, (3, 3), (1, 1), act=lrelu, W_init=w_init, b_init=None)(n)
+
+    while csize > 4:
+        cndf = cndf * 2
+        n = SpectralNormConv2d(cndf, (4, 4), (2, 2), act=lrelu, W_init=w_init, b_init=None)(n)
+        csize = csize / 2
+
+    n = Conv2d(1, (4, 4), (1, 1), act=None, W_init=w_init, b_init=None, padding='VALID')(n)
+
+    return tl.models.Model(inputs=ni, outputs=n)
 #
 #
 # def get_z_D(shape_z):
