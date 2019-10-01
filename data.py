@@ -47,10 +47,119 @@ import ipdb
 # 38 Wearing_Necklace：戴着项链
 # 39 Wearing_Necktie：戴着领带
 # 40 Young：年轻人
+def totaldic(filename):
+    f = open(filename, mode="r")
+    dic = {}
+    for i in f:
+        lst = i.split(",")
+        dic[lst[0]] = lst[1]
+    return dic
+
+def partialdic():
+    animals = 'Mule Antelope Brown_bear Panda Polar_bear Teddy_bear Cat Fox Jaguar Lynx Red_panda Tiger Lion Dog Leopard Cheetah Otter Raccoon Camel Cattle Giraffe Rhinoceros Goat Horse Hamster Kangaroo Koala Mouse Pig Rabbit Squirrel Sheep Zebra Monkey Hippopotamus Deer Elephant Porcupine Hedgehog Bull'
+
+    dic = {}
+    for item in animals.split(' '):
+        if '_' in item:
+            a, b = item.split('_')
+            item = a + ' ' + b
+        dic[item + '\n'] = True
+    return dic
+
+def get_lists(filename, dic1, dic2):
+    f = open(filename, mode="r")
+    list_mask = []
+    list_img = []
+    list_bbox = []
+    cnt = 0
+    for i in f:
+        if cnt == 0:
+            cnt += 1
+            continue
+        lst = i.split(",")
+        msk = lst[0]
+        img = lst[1]
+        cls = lst[2]
+        ani = dic1[cls]
+        x_min = float(lst[4])
+        x_max = float(lst[5])
+        y_min = float(lst[6])
+        y_max = float(lst[7])
+        # if ani == 'Dog':
+        #     input()
+        if ani in dic2:
+            img_path = '/home/asus/data/OpenImage/test/' + img + '.jpg'
+            mask_path = '/home/asus/data/OpenImage/masks/' + msk
+            list_img.append(img_path)
+            list_mask.append(mask_path)
+            list_bbox.append([x_min, x_max, y_min, y_max])
+
+    # print(len(list_img))
+    # print(len(list_mask))
+    # print(len(list_bbox))
+    # input()
+    return list_img, list_mask, list_bbox
 
 
+def load_openimage():
+    dic_code_animal = totaldic('/home/asus/data/OpenImage/description.csv')
+    dic_animals = partialdic()
+    list_img, list_mask, list_bbox = get_lists('/home/asus/data/OpenImage/labels.csv', dic_code_animal, dic_animals)
 
+    # images = images / 127.5 - 1
 
+    def generator_train():
+        for image, mask, bbox in zip(list_img, list_mask, list_bbox):
+            yield image.encode('utf-8'), mask.encode('utf-8'), tf.convert_to_tensor(bbox)
+
+    def _map_fn(image, mask, bbox):
+        image = tf.io.read_file(image)
+        mask = tf.io.read_file(mask)
+        # ipdb.set_trace()
+        #
+        image = tf.image.decode_jpeg(image, channels=3)  # get RGB with 0~1
+        mask = tf.image.decode_png(mask, channels=1)  # get RGB with 0~1
+        image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+        mask = tf.image.convert_image_dtype(mask, dtype=tf.float32)
+        mask = tf.concat([mask, mask, mask], 2)
+        # h_min = tf.math.minimum(mask.shape[1], image.shape[1])
+        # w_min = tf.math.minimum(mask.shape[2], image.shape[2])
+        image = tf.image.resize(image, (flags.img_size_h * 8, flags.img_size_w * 8))
+        mask = tf.image.resize(mask, (flags.img_size_h * 8, flags.img_size_w * 8))
+        # image = image * mask/
+        # mask = tf.cast(mask,dtype=tf.bool)
+        # M_rotate = tl.prepro.affine_rotation_matrix(angle=(-16, 16))
+        # M_flip = tl.prepro.affine_horizontal_flip_matrix(prob=0.5)
+        # M_zoom = tl.prepro.affine_zoom_matrix(zoom_range=(0.8, 1.2))
+
+        # h, w, _ = x.shape
+        # M_combined = M_zoom.dot(M_flip).dot(M_rotate)
+        # transform_matrix = tl.prepro.transform_matrix_offset_center(M_combined, x=w, y=h)
+        # x = tl.prepro.affine_transform_cv2(x, transform_matrix, border_mode='replicate')
+        #
+        # x = tl.prepro.flip_axis(x, axis=1, is_random=True)
+        # x = tl.prepro.rotation(x, rg=16, is_random=True, fill_mode='nearest')
+        # offset_height = int(bbox[2] * image.shape[1])
+        # offset_width = int(bbox[0] * image.shape[2])
+        # target_height = int((bbox[3] - bbox[2])* image.shape[1])
+        # target_width = int((bbox[1] - bbox[0]) * image.shape[2])
+        # image = tf.image.crop_to_bounding_box(image, offset_height, offset_width, target_height, target_width)
+        # x = tl.prepro.crop(x, wrg=256, hrg=256, is_random=True)
+        # x = x / 127.5 - 1.
+        image = image * 2 - 1
+        # image = tf.image.random_flip_left_right(image)
+        # return image, mask, [offset_height, offset_width, target_height, target_width]
+        # bbox = tf.convert_to_tensor(offset_height, offset_width, target_height, target_width)
+        return image, mask, bbox
+
+    train_ds = tf.data.Dataset.from_generator(generator_train, output_types=(tf.string, tf.string, tf.float32))
+    train_ds = train_ds.shuffle(buffer_size=4096)
+    # ds = train_ds.shuffle(buffer_size=4096)
+    ds = train_ds.repeat(flags.n_epoch)
+    ds = ds.map(_map_fn, num_parallel_calls=4)
+    ds = ds.batch(flags.batch_size_train)
+    ds = ds.prefetch(buffer_size=4)  # For concurrency
+    return ds, len(list_img)
 
 
 def get_Y2X_train():
@@ -182,6 +291,7 @@ def get_dataset_train():
     ds = ds.batch(flags.batch_size_train)
     ds = ds.prefetch(buffer_size=4)  # For concurrency
     return ds, len(images_path)
+
 
 
 

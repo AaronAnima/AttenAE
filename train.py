@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import tensorlayer as tl
 from config import flags
-from data import get_dataset_train, get_Y2X_train
+from data import get_dataset_train, get_Y2X_train, load_openimage
 from models import get_Eq, get_Ek, get_Ev, get_img_D
 import random
 import argparse
@@ -65,7 +65,7 @@ def get_atten_ele(batch_imgs, E_q, E_k, E_v):
 
 def train_GE(con=False):
     # dataset, len_dataset = get_dataset_train()
-    dataset, len_dataset = get_Y2X_train()
+    dataset, len_dataset = load_openimage()
     len_dataset = flags.len_dataset
     num_tiles = int(np.sqrt(flags.sample_size))
     print(con)
@@ -73,11 +73,11 @@ def train_GE(con=False):
     #     E_q.load_weights('./checkpoint/E_q.npz')
     #     E_k.load_weights('./checkpoint/E_k.npz')
     #     E_v.load_weights('./checkpoint/E_v.npz')
-    E_q.load_weights('./checkpoint/E_q.npz')
-    E_k.load_weights('./checkpoint/E_k.npz')
-    E_v.load_weights('./checkpoint/E_v.npz')
-    D1.load_weights('./checkpoint/D1.npz')
-    D2.load_weights('./checkpoint/D2.npz')
+    # E_q.load_weights('./checkpoint/E_q.npz')
+    # E_k.load_weights('./checkpoint/E_k.npz')
+    # E_v.load_weights('./checkpoint/E_v.npz')
+    # D1.load_weights('./checkpoint/D1.npz')
+    # D2.load_weights('./checkpoint/D2.npz')
 
     E_q.train()
     E_k.train()
@@ -94,10 +94,28 @@ def train_GE(con=False):
 
     e_optimizer = tf.optimizers.Adam(lr_E, beta_1=flags.beta1, beta_2=flags.beta2)
     d_optimizer = tf.optimizers.Adam(lr_D, beta_1=flags.beta1, beta_2=flags.beta2)
-    for step, Y_and_X in enumerate(dataset):
+    for step, batches in enumerate(dataset):
+        images = batches[0]
+        masks = batches[1]
+        bbox = batches[2]
+        images = images * masks
+        bbox_0 = tf.slice(bbox, [0, 0], [bbox.shape[0], 1])
+        bbox_1 = tf.slice(bbox, [0, 1], [bbox.shape[0], 1])
+        bbox_2 = tf.slice(bbox, [0, 2], [bbox.shape[0], 1])
+        bbox_3 = tf.slice(bbox, [0, 3], [bbox.shape[0], 1])
+        bbox = tf.concat([bbox_0, bbox_2, bbox_1, bbox_3], axis=1)
+        w = []
+        for i in range(flags.batch_size_train):
+            w.append(i)
+        w = tf.convert_to_tensor(w)
+        images = tf.image.crop_and_resize(images, bbox,box_indices=w, crop_size=(flags.img_size_w, flags.img_size_h))
+        images = tf.image.resize(images, (flags.img_size_h, flags.img_size_w))
+
+
+
         epoch_num = step // n_step_epoch
-        batch_imgs1 = Y_and_X[0]  # (1, 256, 256, 3)
-        batch_imgs2 = Y_and_X[1]  # (1, 256, 256, 3)
+        batch_imgs1 = images[0:32]  # (1, 256, 256, 3)
+        batch_imgs2 = images[32:64]  # (1, 256, 256, 3)
         if step == 0:
             sample_images1 = batch_imgs1
             sample_images2 = batch_imgs2
@@ -123,10 +141,10 @@ def train_GE(con=False):
             recon1 = tf.keras.layers.Attention()([tq1, tv1, tk1])
             recon2 = tf.keras.layers.Attention()([tq2, tv2, tk2])
 
-            recon1 = tf.reshape(recon1, [flags.batch_size_train, 64, 64, 3])
-            recon2 = tf.reshape(recon2, [flags.batch_size_train, 64, 64, 3])
-            fake2 =tf.reshape(atten_res2, [flags.batch_size_train, 64, 64, 3])
-            fake1 =tf.reshape(atten_res1, [flags.batch_size_train, 64, 64, 3])
+            recon1 = tf.reshape(recon1, [flags.batch_size_train // 2, 64, 64, 3])
+            recon2 = tf.reshape(recon2, [flags.batch_size_train // 2, 64, 64, 3])
+            fake2 =tf.reshape(atten_res2, [flags.batch_size_train // 2, 64, 64, 3])
+            fake1 =tf.reshape(atten_res1, [flags.batch_size_train // 2, 64, 64, 3])
 
             fake1_logits = D1(fake1)
             fake2_logits = D2(fake2)
