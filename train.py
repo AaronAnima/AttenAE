@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import tensorlayer as tl
 from config import flags
-from data import get_dataset_train, get_Y2X_train, load_openimage
+from data import load_openimage, partialdic
 from models import get_Eq, get_Ek, get_Ev, get_img_D
 import random
 import argparse
@@ -54,6 +54,8 @@ def KStest(real_z, fake_z):
 def get_atten_ele(batch_imgs, E_q, E_k, E_v):
     noedge_imgs = edge_detect(batch_imgs)
     noedge_imgs = tf.reshape(noedge_imgs, [-1, 64, 64, 1])
+    # tl.visualize.save_images(noedge_imgs.numpy(), [8, 8],
+    #                          'checkimgs/noegde.jpg')
     tq = E_q(noedge_imgs)
     tq = tf.reshape(tq, [batch_imgs.shape[0], -1, tq.shape[3]])
     tv = E_v(batch_imgs)
@@ -63,21 +65,52 @@ def get_atten_ele(batch_imgs, E_q, E_k, E_v):
     return tq, tv, tk
 
 
+def pre_process(images, masks, bbox):
+    images = images * masks
+    bbox_0 = tf.slice(bbox, [0, 0], [bbox.shape[0], 1])  # w_min
+    bbox_1 = tf.slice(bbox, [0, 1], [bbox.shape[0], 1])  # w_max
+    bbox_2 = tf.slice(bbox, [0, 2], [bbox.shape[0], 1])  # h_min
+    bbox_3 = tf.slice(bbox, [0, 3], [bbox.shape[0], 1])  # h_max
+    bbox = tf.concat([bbox_2, bbox_0, bbox_3, bbox_1], axis=1)
+    w = []
+    for i in range(flags.batch_size_train):
+        w.append(i)
+    w = tf.convert_to_tensor(w)
+    assert images.shape[0] == bbox.shape[0]
+
+    images = tf.image.crop_and_resize(images, bbox, box_indices=w, crop_size=(flags.img_size_w, flags.img_size_h))
+    images = tf.image.resize(images, (flags.img_size_h, flags.img_size_w))
+    return images
+
+
+def save_dataset(images, labels):
+    for image, label in zip(images, labels):
+        label = label.numpy()
+        label = str(label, encoding="utf-8")
+        image = tf.convert_to_tensor([image])
+        if label in dic:
+            dic[label] += 1
+        else:
+            dic[label] = 1
+            tl.files.exists_or_mkdir('dataset/' + str(label))  # samples path
+        tl.visualize.save_images(image.numpy(), [1, 1],
+                                 'dataset/' + str(label) + '/' + str(label) + '_{}.jpg'.format(dic[label]))
+
+
 def train_GE(con=False):
     # dataset, len_dataset = get_dataset_train()
     dataset, len_dataset = load_openimage()
-    len_dataset = flags.len_dataset
     num_tiles = int(np.sqrt(flags.sample_size))
     print(con)
     # if con:
     #     E_q.load_weights('./checkpoint/E_q.npz')
     #     E_k.load_weights('./checkpoint/E_k.npz')
     #     E_v.load_weights('./checkpoint/E_v.npz')
-    # E_q.load_weights('./checkpoint/E_q.npz')
-    # E_k.load_weights('./checkpoint/E_k.npz')
-    # E_v.load_weights('./checkpoint/E_v.npz')
-    # D1.load_weights('./checkpoint/D1.npz')
-    # D2.load_weights('./checkpoint/D2.npz')
+    E_q.load_weights('./checkpoint/E_q.npz')
+    E_k.load_weights('./checkpoint/E_k.npz')
+    E_v.load_weights('./checkpoint/E_v.npz')
+    D1.load_weights('./checkpoint/D1.npz')
+    D2.load_weights('./checkpoint/D2.npz')
 
     E_q.train()
     E_k.train()
@@ -94,26 +127,26 @@ def train_GE(con=False):
 
     e_optimizer = tf.optimizers.Adam(lr_E, beta_1=flags.beta1, beta_2=flags.beta2)
     d_optimizer = tf.optimizers.Adam(lr_D, beta_1=flags.beta1, beta_2=flags.beta2)
+    dic = {}
+    dic2 = partialdic()
     for step, batches in enumerate(dataset):
-        images = batches[0]
-        masks = batches[1]
-        bbox = batches[2]
-        images = images * masks
-        bbox_0 = tf.slice(bbox, [0, 0], [bbox.shape[0], 1])
-        bbox_1 = tf.slice(bbox, [0, 1], [bbox.shape[0], 1])
-        bbox_2 = tf.slice(bbox, [0, 2], [bbox.shape[0], 1])
-        bbox_3 = tf.slice(bbox, [0, 3], [bbox.shape[0], 1])
-        bbox = tf.concat([bbox_0, bbox_2, bbox_1, bbox_3], axis=1)
-        w = []
-        for i in range(flags.batch_size_train):
-            w.append(i)
-        w = tf.convert_to_tensor(w)
-        images = tf.image.crop_and_resize(images, bbox,box_indices=w, crop_size=(flags.img_size_w, flags.img_size_h))
-        images = tf.image.resize(images, (flags.img_size_h, flags.img_size_w))
-
-
+        # ???
+        if batches[0].shape[0] != flags.batch_size_train:
+            continue
+        # batches [0]: images [1]: masks [2]: bboxes
+        if batches[0].shape[0] != batches[2].shape[0]:
+            continue
+        images = pre_process(batches[0], batches[1], batches[2])
 
         epoch_num = step // n_step_epoch
+        # # print(step)
+        # # DEGUG
+        # # tl.visualize.save_images(images.numpy(), [8, 8],
+        # #                          'raw_imgs/raw{:04d}.png'.format(step))
+        # # if step % 10 == 0:
+        # #     print(str(step))
+        if epoch_num > 0:
+            break
         batch_imgs1 = images[0:32]  # (1, 256, 256, 3)
         batch_imgs2 = images[32:64]  # (1, 256, 256, 3)
         if step == 0:
@@ -124,20 +157,17 @@ def train_GE(con=False):
             tl.visualize.save_images(sample_images2.numpy(), [num_tiles, num_tiles],
                                      '{}/_sample2.png'.format(flags.sample_dir))
         '''
-        log = " ** new learning rate: %f (for GAN)" % (lr_v.tolist()[0])
-        print(log)
-        '''
+        # log = " ** new learning rate: %f (for GAN)" % (lr_v.tolist()[0])
+        # print(log)
+        # '''
 
         # ipdb.set_trace()
         with tf.GradientTape(persistent=True) as tape:
             tq1, tv1, tk1 = get_atten_ele(batch_imgs1, E_q, E_k, E_v)
             tq2, tv2, tk2 = get_atten_ele(batch_imgs2, E_q, E_k, E_v)
-            # print(tq1.shape)
-            # print(tv1.shape)
-            # print(tk1.shape)
-            # input()
-            atten_res2 = tf.keras.layers.Attention()([tq1, tv2, tk1])
-            atten_res1 = tf.keras.layers.Attention()([tq2, tv1, tk2])
+
+            atten_res2 = tf.keras.layers.Attention()([tq1, tv2, tk2])
+            atten_res1 = tf.keras.layers.Attention()([tq2, tv1, tk1])
             recon1 = tf.keras.layers.Attention()([tq1, tv1, tk1])
             recon2 = tf.keras.layers.Attention()([tq2, tv2, tk2])
 
@@ -217,4 +247,4 @@ if __name__ == '__main__':
     parser.add_argument('--is_continue', type=bool, default=False, help='load weights from checkpoints?')
     args = parser.parse_args()
     train_GE(con=args.is_continue)
-    train_Gz()
+    # train_Gz()
