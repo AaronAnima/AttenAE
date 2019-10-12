@@ -17,7 +17,7 @@ class FLAGS(object):
         self.lr_Dh = 0.0005
         self.beta1 = 0.5 # "Momentum term of adam [0.5]")
         self.beta2 = 0.9
-        self.batch_size_train = 64 # "The number of batch images [64]")
+        self.batch_size_train = 8 # "The number of batch images [64]")
         self.dataset = "CIFAR" # "The name of dataset [CIFAR_10, MNIST]")
         self.checkpoint_dir = "./checkpoint"
         self.sample_dir = "samples" # "Directory name to save the image samples [samples]")
@@ -47,6 +47,9 @@ class FLAGS(object):
         self.opt_sample_dir = 'opt_img'
         self.acc_step = 100
         self.sample_size = 64
+        self.aug_margin = 0.1
+        self.rotate_margin = 15
+        self.semantic_ch = 8
 
 
 

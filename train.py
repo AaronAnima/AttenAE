@@ -10,7 +10,7 @@ import argparse
 import math
 import scipy.stats as stats
 import tensorflow_probability as tfp
-
+from random import shuffle
 import ipdb
 import cv2
 
@@ -20,12 +20,9 @@ import cv2
 # sys.stderr = f # redirect std err, if necessary
 
 E_q = get_Eq([None, flags.img_size_h, flags.img_size_w, 1])
-E_k = get_Ek([None, flags.img_size_h, flags.img_size_w, flags.c_dim])
 E_v = get_Ev([None, flags.img_size_h, flags.img_size_w, flags.c_dim])
-D1 = get_img_D([None, flags.img_size_h, flags.img_size_w, flags.c_dim])
-D2 = get_img_D([None, flags.img_size_h, flags.img_size_w, flags.c_dim])
 
-def edge_detect(images):
+def aug2(images):
     images = images.numpy()
     results = []
     for image in images:
@@ -42,7 +39,7 @@ def edge_detect(images):
         results.append(image)
     results = np.array(results)
     results = tf.convert_to_tensor(results, tf.float32)
-    return results
+    return tf.reshape(results, [-1, flags.img_size_h, flags.img_size_h, 1])
 
 def KStest(real_z, fake_z):
     p_list = []
@@ -51,36 +48,17 @@ def KStest(real_z, fake_z):
         p_list.append(tmp_p)
     return np.min(p_list), np.mean(p_list)
 
-def get_atten_ele(batch_imgs, E_q, E_k, E_v):
-    noedge_imgs = edge_detect(batch_imgs)
-    noedge_imgs = tf.reshape(noedge_imgs, [-1, 64, 64, 1])
-    # tl.visualize.save_images(noedge_imgs.numpy(), [8, 8],
-    #                          'checkimgs/noegde.jpg')
-    tq = E_q(noedge_imgs)
+
+def get_q(batch_imgs, E_q):
+    tq = E_q(batch_imgs)
     tq = tf.reshape(tq, [batch_imgs.shape[0], -1, tq.shape[3]])
+    return tq
+
+
+def get_v(batch_imgs, E_v):
     tv = E_v(batch_imgs)
     tv = tf.reshape(tv, [batch_imgs.shape[0], -1, tv.shape[3]])
-    tk = E_k(batch_imgs)
-    tk = tf.reshape(tk, [batch_imgs.shape[0], -1, tk.shape[3]])
-    return tq, tv, tk
-
-
-def pre_process(images, masks, bbox):
-    images = images * masks
-    bbox_0 = tf.slice(bbox, [0, 0], [bbox.shape[0], 1])  # w_min
-    bbox_1 = tf.slice(bbox, [0, 1], [bbox.shape[0], 1])  # w_max
-    bbox_2 = tf.slice(bbox, [0, 2], [bbox.shape[0], 1])  # h_min
-    bbox_3 = tf.slice(bbox, [0, 3], [bbox.shape[0], 1])  # h_max
-    bbox = tf.concat([bbox_2, bbox_0, bbox_3, bbox_1], axis=1)
-    w = []
-    for i in range(flags.batch_size_train):
-        w.append(i)
-    w = tf.convert_to_tensor(w)
-    assert images.shape[0] == bbox.shape[0]
-
-    images = tf.image.crop_and_resize(images, bbox, box_indices=w, crop_size=(flags.img_size_w, flags.img_size_h))
-    images = tf.image.resize(images, (flags.img_size_h, flags.img_size_w))
-    return images
+    return tv
 
 
 def save_dataset(images, labels):
@@ -97,65 +75,61 @@ def save_dataset(images, labels):
                                  'dataset/' + str(label) + '/' + str(label) + '_{}.jpg'.format(dic[label]))
 
 
+def get_attention_eles(tk, images_notexture, images_aug, E_v, E_q):
+    v_k = get_v(images_aug, E_v)
+    tq = get_q(images_notexture, E_q)
+    _t_v = tf.reshape(images_aug, [images_aug.shape[0], -1, images_aug.shape[3]])
+    tv = tf.keras.layers.Attention()([tk, _t_v, v_k])
+    return tq, tv
+
+
+def get_test_imgs(num):
+    test_imgs_path = tl.files.load_file_list(path='./test', regx='.*.jpg', keep_prefix=True, printable=False)
+    shuffle(test_imgs_path)
+    images = []
+    for i in range(num):
+        image = test_imgs_path[i].encode('utf-8')
+        image = tf.io.read_file(image)
+        image = tf.image.decode_jpeg(image, channels=3)
+        image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+        image = tf.expand_dims(image, 0)
+        if i == 0:
+            images = image
+            images = tf.convert_to_tensor(images)
+        else:
+            images = tf.concat([images, image], axis=0)
+    return images
+
+
 def train_GE(con=False):
     # dataset, len_dataset = get_dataset_train()
     dataset, len_dataset = load_openimage()
-    num_tiles = int(np.sqrt(flags.sample_size))
-    print(con)
     # if con:
     #     E_q.load_weights('./checkpoint/E_q.npz')
     #     E_k.load_weights('./checkpoint/E_k.npz')
     #     E_v.load_weights('./checkpoint/E_v.npz')
-    E_q.load_weights('./checkpoint/E_q.npz')
-    E_k.load_weights('./checkpoint/E_k.npz')
-    E_v.load_weights('./checkpoint/E_v.npz')
-    D1.load_weights('./checkpoint/D1.npz')
-    D2.load_weights('./checkpoint/D2.npz')
+    # E_q.load_weights('./checkpoint/E_q.npz')
+    # E_k.load_weights('./checkpoint/E_k.npz')
+    # E_v.load_weights('./checkpoint/E_v.npz')
+    # D1.load_weights('./checkpoint/D1.npz')
+    # D2.load_weights('./checkpoint/D2.npz')
 
     E_q.train()
-    E_k.train()
     E_v.train()
-    D1.train()
-    D2.train()
-    # print(E_q.config)
 
     n_step_epoch = int(len_dataset // flags.batch_size_train)
     n_epoch = int(flags.step_num // n_step_epoch)
 
     lr_E = flags.lr_E
-    lr_D = flags.lr_D
 
-    e_optimizer = tf.optimizers.Adam(lr_E, beta_1=flags.beta1, beta_2=flags.beta2)
-    d_optimizer = tf.optimizers.Adam(lr_D, beta_1=flags.beta1, beta_2=flags.beta2)
-    dic = {}
-    dic2 = partialdic()
+    optimizer = tf.optimizers.Adam(lr_E, beta_1=flags.beta1, beta_2=flags.beta2)
+    k_var = None
+    tk = None
     for step, batches in enumerate(dataset):
-        # ???
-        if batches[0].shape[0] != flags.batch_size_train:
-            continue
-        # batches [0]: images [1]: masks [2]: bboxes
-        if batches[0].shape[0] != batches[2].shape[0]:
-            continue
-        images = pre_process(batches[0], batches[1], batches[2])
-
+        images = batches[0]
+        images_aug = batches[1]
+        images_notexture = aug2(images)
         epoch_num = step // n_step_epoch
-        # # print(step)
-        # # DEGUG
-        # # tl.visualize.save_images(images.numpy(), [8, 8],
-        # #                          'raw_imgs/raw{:04d}.png'.format(step))
-        # # if step % 10 == 0:
-        # #     print(str(step))
-        if epoch_num > 0:
-            break
-        batch_imgs1 = images[0:32]  # (1, 256, 256, 3)
-        batch_imgs2 = images[32:64]  # (1, 256, 256, 3)
-        if step == 0:
-            sample_images1 = batch_imgs1
-            sample_images2 = batch_imgs2
-            tl.visualize.save_images(sample_images1.numpy(), [num_tiles, num_tiles],
-                                     '{}/_sample1.png'.format(flags.sample_dir))
-            tl.visualize.save_images(sample_images2.numpy(), [num_tiles, num_tiles],
-                                     '{}/_sample2.png'.format(flags.sample_dir))
         '''
         # log = " ** new learning rate: %f (for GAN)" % (lr_v.tolist()[0])
         # print(log)
@@ -163,80 +137,90 @@ def train_GE(con=False):
 
         # ipdb.set_trace()
         with tf.GradientTape(persistent=True) as tape:
-            tq1, tv1, tk1 = get_atten_ele(batch_imgs1, E_q, E_k, E_v)
-            tq2, tv2, tk2 = get_atten_ele(batch_imgs2, E_q, E_k, E_v)
+            if step == 0:
+                # tk will only be initialized once
+                init_val = np.random.normal(loc=0.0, scale=0.02, size=[1, flags.img_size_h,  flags.img_size_h,
+                                                                       flags.semantic_ch]).astype(np.float32)
+                k_var = tf.Variable(init_val)
 
-            atten_res2 = tf.keras.layers.Attention()([tq1, tv2, tk2])
-            atten_res1 = tf.keras.layers.Attention()([tq2, tv1, tk1])
-            recon1 = tf.keras.layers.Attention()([tq1, tv1, tk1])
-            recon2 = tf.keras.layers.Attention()([tq2, tv2, tk2])
+            tk = tf.tile(k_var, [flags.batch_size_train, 1, 1, 1])
+            tk = tf.reshape(tk, [flags.batch_size_train, -1, tk.shape[3]])
+            # v_k = get_v(images_aug, E_v)
+            # tq = get_q(images_notexture, E_q)
+            # _t_v = tf.reshape(images_aug, [flags.batch_size_train, -1, images_aug.shape[3]])
+            # tv = tf.keras.layers.Attention()([tk, _t_v, v_k])
+            tq, tv = get_attention_eles(tk, images_notexture, images_aug, E_v, E_q)
+            atten_res = tf.keras.layers.Attention()([tq, tv, tk])
+            recon = tf.reshape(atten_res, [flags.batch_size_train, flags.img_size_h, flags.img_size_w, 3])
+            recon_loss = (tl.cost.absolute_difference_error(recon, images, is_mean=True))
 
-            recon1 = tf.reshape(recon1, [flags.batch_size_train // 2, 64, 64, 3])
-            recon2 = tf.reshape(recon2, [flags.batch_size_train // 2, 64, 64, 3])
-            fake2 =tf.reshape(atten_res2, [flags.batch_size_train // 2, 64, 64, 3])
-            fake1 =tf.reshape(atten_res1, [flags.batch_size_train // 2, 64, 64, 3])
-
-            fake1_logits = D1(fake1)
-            fake2_logits = D2(fake2)
-            real1_logits = D1(batch_imgs1)
-            real2_logits = D2(batch_imgs2)
-
-            recon_loss = 25 * (tl.cost.absolute_difference_error(recon1, batch_imgs1, is_mean=True) + \
-                         tl.cost.absolute_difference_error(recon2, batch_imgs2, is_mean=True))
-
-            E_loss_adv = tl.cost.sigmoid_cross_entropy(fake1_logits, tf.ones_like(fake1_logits)) + \
-                           tl.cost.sigmoid_cross_entropy(fake2_logits, tf.ones_like(fake2_logits))
-
-            D_loss_adv = tl.cost.sigmoid_cross_entropy(fake1_logits, tf.zeros_like(fake1_logits)) + \
-                           tl.cost.sigmoid_cross_entropy(fake2_logits, tf.zeros_like(fake2_logits)) + \
-                           tl.cost.sigmoid_cross_entropy(real1_logits, tf.ones_like(real1_logits)) + \
-                           tl.cost.sigmoid_cross_entropy(real2_logits, tf.ones_like(real2_logits))
+            E_loss_total = recon_loss
 
         # Updating Encoder
-        E_trainable_weights = E_q.trainable_weights + E_v.trainable_weights + E_k.trainable_weights
-        D_trainable_weights = D1.trainable_weights + D2.trainable_weights
-        grad = tape.gradient(E_loss_adv , E_trainable_weights)
-        e_optimizer.apply_gradients(zip(grad, E_trainable_weights))
+        total_weights = E_q.trainable_weights + E_v.trainable_weights + [k_var]
 
-        grad = tape.gradient(recon_loss, E_trainable_weights)
-        e_optimizer.apply_gradients(zip(grad, E_trainable_weights))
-
-        grad = tape.gradient(D_loss_adv, D_trainable_weights)
-        d_optimizer.apply_gradients(zip(grad, D_trainable_weights))
+        grad = tape.gradient(E_loss_total, total_weights)
+        optimizer.apply_gradients(zip(grad, total_weights))
+        # grad = tape.gradient(E_loss_total, tk)
+        # e_optimizer.apply_gradients(zip(grad, tk))
 
         # basic
         if np.mod(step, flags.show_freq) == 0 and step != 0:
-            print("Epoch: [{}/{}] [{}/{}] recon_loss: {:.5f}, E_loss_adv: {:.5f}, D_loss_adv: {:.5f}".format
-                  (epoch_num, n_epoch, step, n_step_epoch, recon_loss, E_loss_adv, D_loss_adv))
+            print("Epoch: [{}/{}] [{}/{}] recon_loss: {:.5f}".format
+                  (epoch_num, n_epoch, step, n_step_epoch, recon_loss))
 
         if np.mod(step, n_step_epoch) == 0 and step != 0:
             E_q.save_weights('./checkpoint/E_q.npz')
-            E_k.save_weights('./checkpoint/E_k.npz')
             E_v.save_weights('./checkpoint/E_v.npz')
-            D1.save_weights('./checkpoint/D1.npz')
-            D2.save_weights('./checkpoint/D2.npz')
-            # G.train()
-        # if np.mod(step, 1) == 0:
-        if np.mod(step, flags.eval_step) == 0 and step != 0:
-            realAfakeA = tf.concat([batch_imgs1[0:32], fake1[0:32]], 0)
-            # realAfakeA = tf.concat([tf.split(0, 2, batch_imgs1)[0], tf.split(0, 2, fake1)[0]], 0)
-            # realBfakeB = tf.concat([tf.split(0, 2, batch_imgs2)[0], tf.split(0, 2, fake2)[0]], 0)
-            realBfakeB = tf.concat([batch_imgs2[0:32], fake2[0:32]], 0)
-            textureA = tf.reshape(tv1, [-1, 16, 16, 3])
-            textureB = tf.reshape(tv2, [-1, 16, 16, 3])
-            # textureAB = tf.concat([tf.split(0, 2, textureA)[0], tf.split(0, 2, textureB)[0]], 0)
-            textureAB = tf.concat([textureA[0:32], textureB[0:32]], 0)
-            # reconAB = tf.concat([tf.split(0, 2, recon1)[0], tf.split(0, 2, recon2)[0]], 0)
-            reconAB = tf.concat([recon1[0:32], recon2[0:32]], 0)
 
-            tl.visualize.save_images(realAfakeA.numpy(), [8, 8],
-                                     '{}/realAfakeA{:02d}_{:04d}.png'.format(flags.sample_dir, step // n_step_epoch, step))
-            tl.visualize.save_images(realBfakeB.numpy(), [8, 8],
-                                     '{}/realBfakeB{:02d}_{:04d}.png'.format(flags.sample_dir, step // n_step_epoch, step))
-            tl.visualize.save_images(textureAB.numpy(), [8, 8],
-                                     '{}/textureAB{:02d}_{:04d}.png'.format(flags.sample_dir, step // n_step_epoch, step))
-            tl.visualize.save_images(reconAB.numpy(), [8, 8],
+        if np.mod(step, flags.eval_step) == 0 :
+            E_q.eval()
+            E_v.eval()
+            # get a random batch of test image
+            images = get_test_imgs(8)
+            images = tf.convert_to_tensor(images)
+            images1 = images[0:4]
+            images2 = images[4:8]
+
+            images_aug1 = images_aug[0:4]
+            images_aug2 = images_aug[4:8]
+            images_notexture1 = images_notexture[0:4]
+            images_notexture2 = images_notexture[4:8]
+            tk = tf.tile(k_var, [4, 1, 1, 1])
+            tk = tf.reshape(tk, [4, -1, tk.shape[-1]])
+
+            tq1, tv1 = get_attention_eles(tk, images_notexture1, images_aug1, E_v, E_q)
+            tq2, tv2 = get_attention_eles(tk, images_notexture2, images_aug2, E_v, E_q)
+
+            atten_res1 = tf.keras.layers.Attention()([tq1, tv1, tk])
+            recon1 = tf.reshape(atten_res1, images1.shape)
+            atten_res2 = tf.keras.layers.Attention()([tq2, tv2, tk])
+            recon2 = tf.reshape(atten_res2, images2.shape)
+
+            atten_res1_fake = tf.keras.layers.Attention()([tq2, tv1, tk])
+            fake1 = tf.reshape(atten_res1_fake, images1.shape)
+            atten_res2_fake = tf.keras.layers.Attention()([tq1, tv2, tk])
+            fake2 = tf.reshape(atten_res2_fake, images2.shape)
+
+            texture1 = tf.reshape(tv1, [-1, flags.img_size_h, flags.img_size_h, 3])
+            texture2 = tf.reshape(tv2, [-1, flags.img_size_h, flags.img_size_h, 3])
+
+            fakeAB = tf.concat([images1, fake1, images2, fake2], axis=0)
+            reconAB = tf.concat([images1, recon1, images2, recon2], axis=0)
+            textureAB = tf.concat([images1, texture1, images2, texture2], axis=0)
+            augAB = tf.concat([images1, images_aug1, images2, images_aug2], axis=0)
+
+
+            tl.visualize.save_images(fakeAB.numpy(), [4, 4],
+                                     '{}/fakeAB{:02d}_{:04d}.png'.format(flags.sample_dir, step // n_step_epoch, step))
+            tl.visualize.save_images(reconAB.numpy(), [4, 4],
                                      '{}/reconAB{:02d}_{:04d}.png'.format(flags.sample_dir, step // n_step_epoch, step))
+            tl.visualize.save_images(textureAB.numpy(), [4, 4],
+                                     '{}/textureAB{:02d}_{:04d}.png'.format(flags.sample_dir, step // n_step_epoch, step))
+            tl.visualize.save_images(augAB.numpy(), [4, 4],
+                                     '{}/augAB{:02d}_{:04d}.png'.format(flags.sample_dir, step // n_step_epoch, step))
+            E_q.train()
+            E_v.train()
 
         del tape
 

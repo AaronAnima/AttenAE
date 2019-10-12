@@ -105,6 +105,8 @@ def get_lists(filename, dic1, dic2):
     # input()
     return list_img, list_mask, list_bbox, list_label
 
+    
+
 
 def load_openimage():
     dic_code_animal = totaldic('/home/asus/data/OpenImage/description.csv')
@@ -116,42 +118,85 @@ def load_openimage():
 
     def generator_train():
         for image, mask, bbox, label in zip(list_img, list_mask, list_bbox, list_label):
-            yield image.encode('utf-8'), mask.encode('utf-8'), tf.convert_to_tensor(bbox), label
+            image = image.encode('utf-8')
+            mask = mask.encode('utf-8')
+
+            image = tf.io.read_file(image)
+            mask = tf.io.read_file(mask)
+
+            image = tf.image.decode_jpeg(image, channels=3)  # get RGB with 0~1
+            mask = tf.image.decode_png(mask, channels=1)  # get RGB with 0~1
+
+            image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+            mask = tf.image.convert_image_dtype(mask, dtype=tf.float32)
+
+            image = tf.image.resize(image, (flags.img_size_h * 8, flags.img_size_w * 8))
+            mask = tf.image.resize(mask, (flags.img_size_h * 8, flags.img_size_w * 8))
+
+            image = image * 2 - 1
+
+            yield image, mask, tf.convert_to_tensor(bbox), label
+
+    def aug(x, bbox):
+        # for shifting
+        aug_z = np.random.uniform(low=0.0, high=flags.aug_margin, size=bbox.shape).astype(np.float32)
+        bbox_0 = np.max([bbox[0] - aug_z[0], 0])
+        bbox_1 = np.min([bbox[1] + aug_z[1], 1])
+        bbox_2 = np.max([bbox[2] - aug_z[2], 0])
+        bbox_3 = np.min([bbox[3] + aug_z[3], 1])
+
+        offset_height = tf.cast((bbox_2 * x.shape[1]), tf.int32)
+        offset_width = tf.cast((bbox_0 * x.shape[1]), tf.int32)
+        target_height = tf.cast(((bbox_3 - bbox_2) * x.shape[1]), tf.int32)
+        target_width = tf.cast(((bbox_1 - bbox_0) * x.shape[1]), tf.int32)
+        x = tf.image.crop_to_bounding_box(x,
+                                              offset_height,
+                                              offset_width,
+                                              target_height,
+                                              target_width
+                                              )
+        x = tf.image.resize_with_pad(x, flags.img_size_h, flags.img_size_w)
+
+        # # for rotation
+        # M_rotate = tl.prepro.affine_rotation_matrix(angle=(-flags.rotate_margin, flags.rotate_margin))
+        # h, w, _ = x.shape
+        # M_combined = M_rotate
+        # transform_matrix = tl.prepro.transform_matrix_offset_center(M_combined, x=w, y=h)
+        #
+        # x = tl.prepro.affine_transform_cv2(x.numpy(), transform_matrix, border_mode='replicate')
+        # x = tl.prepro.rotation(x, rg=flags.rotate_margin, is_random=True, fill_mode='nearest')
+
+        return x
+
+    def prepro_fn(image, mask, bbox):
+        mask = tf.concat([mask, mask, mask], 2)
+        image = image * mask
+        # bbox_0 = tf.slice(bbox, [0, 0], [bbox.shape[0], 1])  # w_min
+        # bbox_1 = tf.slice(bbox, [0, 1], [bbox.shape[0], 1])  # w_max
+        # bbox_2 = tf.slice(bbox, [0, 2], [bbox.shape[0], 1])  # h_min
+        # bbox_3 = tf.slice(bbox, [0, 3], [bbox.shape[0], 1])  # h_max
+        aug_image = aug(image, bbox)
+        offset_height = tf.cast((bbox[2] * image.shape[1]), tf.int32)
+        offset_width = tf.cast((bbox[0] * image.shape[1]), tf.int32)
+        target_height = tf.cast(((bbox[3] - bbox[2]) * image.shape[1]), tf.int32)
+        target_width = tf.cast(((bbox[1] - bbox[0]) * image.shape[1]), tf.int32)
+        image = tf.image.crop_to_bounding_box(image,
+                                            offset_height,
+                                            offset_width,
+                                            target_height,
+                                            target_width
+                                        )
+        image = tf.image.resize_with_pad(image, flags.img_size_h, flags.img_size_w)
 
 
+        return image, aug_image
 
     def _map_fn(image, mask, bbox, label):
-        image = tf.io.read_file(image)
-        mask = tf.io.read_file(mask)
-        # ipdb.set_trace()
-        #
-        image = tf.image.decode_jpeg(image, channels=3)  # get RGB with 0~1
-        mask = tf.image.decode_png(mask, channels=1)  # get RGB with 0~1
-        image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-        mask = tf.image.convert_image_dtype(mask, dtype=tf.float32)
-        mask = tf.concat([mask, mask, mask], 2)
-        image = tf.image.resize(image, (flags.img_size_h * 8, flags.img_size_w * 8))
-        mask = tf.image.resize(mask, (flags.img_size_h * 8, flags.img_size_w * 8))
-        # M_rotate = tl.prepro.affine_rotation_matrix(angle=(-16, 16))
-        # M_flip = tl.prepro.affine_horizontal_flip_matrix(prob=0.5)
-        # M_zoom = tl.prepro.affine_zoom_matrix(zoom_range=(0.8, 1.2))
+        image, aug_img = tf.numpy_function(prepro_fn, [image, mask, bbox], [tf.float32, tf.float32])
+        return image, aug_img, label
 
-        # h, w, _ = x.shape
-        # M_combined = M_zoom.dot(M_flip).dot(M_rotate)
-        # transform_matrix = tl.prepro.transform_matrix_offset_center(M_combined, x=w, y=h)
-        # x = tl.prepro.affine_transform_cv2(x, transform_matrix, border_mode='replicate')
-        #
-        # x = tl.prepro.flip_axis(x, axis=1, is_random=True)
-        # x = tl.prepro.rotation(x, rg=16, is_random=True, fill_mode='nearest')
-        # x = tl.prepro.crop(x, wrg=256, hrg=256, is_random=True)
-        # x = x / 127.5 - 1.
-        image = image * 2 - 1
-        # image = tf.image.random_flip_left_right(image)
-        return image, mask, bbox, label
-
-    train_ds = tf.data.Dataset.from_generator(generator_train, output_types=(tf.string, tf.string, tf.float32, tf.string))
-    train_ds = train_ds.shuffle(buffer_size=4096)
-    # ds = train_ds.shuffle(buffer_size=4096)
+    train_ds = tf.data.Dataset.from_generator(generator_train, output_types=(tf.float32, tf.float32, tf.float32, tf.string))
+    # train_ds = train_ds.shuffle(buffer_size=4096)
     ds = train_ds.repeat(flags.n_epoch)
     ds = ds.map(_map_fn, num_parallel_calls=4)
     ds = ds.batch(flags.batch_size_train)
